@@ -231,8 +231,7 @@ class OffloadingEnvironment(MetaEnv):
             # the scheduling sequence will also store in self.'prioritize_sequence'
             scheduling_sequence = task_graph.prioritize_tasks(self.resource_cluster)
 
-            task_encode = np.array(task_graph.encode_point_sequence_with_ranking(scheduling_sequence,
-                                                                                          self.resource_cluster), dtype=np.float32)
+            task_encode = np.array(task_graph.encode_point_sequence_with_ranking(scheduling_sequence), dtype=np.float32)
             encoder_list.append(task_encode)
 
         for i in range(int(graph_number / batch_size)):
