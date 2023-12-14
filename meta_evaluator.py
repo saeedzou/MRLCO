@@ -120,7 +120,7 @@ if __name__ == "__main__":
     finish_time = env.get_all_locally_execute_time()
     print("avg all local solution: ", np.mean(finish_time))
 
-    policy = Seq2SeqPolicy(obs_dim=17,
+    policy = Seq2SeqPolicy(obs_dim=14,
                            encoder_units=256,
                            decoder_units=256,
                            vocab_size=2,
