@@ -167,7 +167,7 @@ if __name__ == "__main__":
         policy=meta_policy,
         rollouts_per_meta_task=1,  # This batch_size is confusing
         meta_batch_size=META_BATCH_SIZE,
-        max_path_length=20000,
+        max_path_length=40000,
         parallel=False,
     )
 
@@ -197,6 +197,7 @@ if __name__ == "__main__":
 
     with tf.compat.v1.Session() as sess:
         sess.run(tf.global_variables_initializer())
+        #meta_policy.core_policy.load_variables('./meta_model_300.ckpt')
         avg_ret, avg_loss, avg_latencies = trainer.train()
 
 
