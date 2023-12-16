@@ -4,6 +4,7 @@ from env.mec_offloaing_envs.offloading_task_graph import OffloadingTaskGraph
 from samplers.vectorized_env_executor import MetaIterativeEnvExecutor
 import numpy as np
 import os
+from tqdm import tqdm
 
 class Resources(object):
     """
@@ -219,7 +220,7 @@ class OffloadingEnvironment(MetaEnv):
         max_running_time_batchs = []
         min_running_time_batchs = []
 
-        for i in range(graph_number):
+        for i in tqdm(range(graph_number)):
             task_graph = OffloadingTaskGraph(graph_file_path + str(i) + '.gv')
             task_graph_list.append(task_graph)
 
