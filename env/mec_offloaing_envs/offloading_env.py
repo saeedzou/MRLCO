@@ -235,7 +235,7 @@ class OffloadingEnvironment(MetaEnv):
             if encoding == 'rank':
                 task_encode = np.array(task_graph.encode_point_sequence_with_ranking(scheduling_sequence), dtype=np.float32)
             elif encoding == 'rank_cost':
-                task_encode = np.array(task_graph.encode_point_sequence_with_ranking_ranking_and_cost(scheduling_sequence, self.resource_cluster), dtype=np.float32)
+                task_encode = np.array(task_graph.encode_point_sequence_with_ranking_and_cost(scheduling_sequence, self.resource_cluster), dtype=np.float32)
             encoder_list.append(task_encode)
 
         for i in range(int(graph_number / batch_size)):
