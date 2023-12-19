@@ -140,7 +140,8 @@ if __name__ == "__main__":
                                 batch_size=c.graph_number,
                                 graph_number=c.graph_number,
                                 graph_file_paths=c.graph_file_paths,
-                                time_major=False)
+                                time_major=False,
+                                encoding=c.encoding)
 
     action, greedy_finish_time = env.greedy_solution()
     print("avg greedy solution: ", np.mean(greedy_finish_time))

@@ -18,6 +18,7 @@
 "tau":0.95,
 "normalize_adv":true,
 "positive_adv":false,
+"encoding":"rank",
 "obs_dim":14,
 "action_dim":2,
 "unit_type":"lstm",

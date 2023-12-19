@@ -58,7 +58,7 @@ class Resources(object):
 class OffloadingEnvironment(MetaEnv):
     def __init__(self, resource_cluster, batch_size,
                  graph_number,
-                 graph_file_paths, time_major):
+                 graph_file_paths, time_major, encoding='rank'):
         self.resource_cluster = resource_cluster
         self.task_graphs_batchs = []
         self.encoder_batchs = []
@@ -67,11 +67,12 @@ class OffloadingEnvironment(MetaEnv):
         self.max_running_time_batchs = []
         self.min_running_time_batchs = []
         self.graph_file_paths = graph_file_paths
+        self.encoding = encoding
 
         # load all the task graphs into the evnironment
         for graph_file_path in graph_file_paths:
             encoder_batchs, encoder_lengths, task_graph_batchs, decoder_full_lengths, max_running_time_batchs, min_running_time_batchs = \
-                self.generate_point_batch_for_random_graphs(batch_size, graph_number, graph_file_path, time_major)
+                self.generate_point_batch_for_random_graphs(batch_size, graph_number, graph_file_path, time_major, encoding=encoding)
 
             self.encoder_batchs += encoder_batchs
             self.encoder_lengths += encoder_lengths
@@ -205,7 +206,7 @@ class OffloadingEnvironment(MetaEnv):
     def render(self, mode='human'):
         pass
 
-    def generate_point_batch_for_random_graphs(self, batch_size, graph_number, graph_file_path, time_major):
+    def generate_point_batch_for_random_graphs(self, batch_size, graph_number, graph_file_path, time_major, encoding='rank'):
         encoder_list = []
         task_graph_list = []
 
@@ -231,8 +232,10 @@ class OffloadingEnvironment(MetaEnv):
 
             # the scheduling sequence will also store in self.'prioritize_sequence'
             scheduling_sequence = task_graph.prioritize_tasks(self.resource_cluster)
-
-            task_encode = np.array(task_graph.encode_point_sequence_with_ranking(scheduling_sequence), dtype=np.float32)
+            if encoding == 'rank':
+                task_encode = np.array(task_graph.encode_point_sequence_with_ranking(scheduling_sequence), dtype=np.float32)
+            elif encoding == 'rank_cost':
+                task_encode = np.array(task_graph.encode_point_sequence_with_ranking_ranking_and_cost(scheduling_sequence, self.resource_cluster), dtype=np.float32)
             encoder_list.append(task_encode)
 
         for i in range(int(graph_number / batch_size)):
