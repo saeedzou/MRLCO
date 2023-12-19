@@ -125,7 +125,7 @@ if __name__ == "__main__":
                 setattr(self, key, value)
     
     c = Config(data)
-    save_path = f'{c.save_path}/h_{c.encoder_units}_isAtt_{c.is_attention}_iter_{c.iter}_olr_{c.outer_lr}_ilr_{c.inner_lr}_mbs_{c.meta_batch_size}_obs_{c.obs_dim}_as_{c.adaptation_steps}_ib_{c.inner_batch_size}_ml_{c.max_path_length}_dp_{c.dropout}_nl_{c.num_layers}_nrl_{c.num_residual_layers}_isb_{c.is_bidencoder}_mec_{c.mec_process_capable}_mob_{c.mobile_process_capable}_bwu_{c.bandwidth_up}_bwd_{c.bandwidth_down}_ut_{c.unit_type}_sp_{c.start_iter}'
+    save_path = f'{c.save_path}/h_{c.encoder_units}_isAtt_{c.is_attention}_olr_{c.outer_lr}_ilr_{c.inner_lr}_mbs_{c.meta_batch_size}_obs_{c.obs_dim}_as_{c.adaptation_steps}_ib_{c.inner_batch_size}_ml_{c.max_path_length}_dp_{c.dropout}_nl_{c.num_layers}_nrl_{c.num_residual_layers}_isb_{c.is_bidencoder}_mec_{c.mec_process_capable}_mob_{c.mobile_process_capable}_bwu_{c.bandwidth_up}_bwd_{c.bandwidth_down}_ut_{c.unit_type}_sp_{c.start_iter}'
     tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
     logger.configure(dir=save_path+"/train_logs/", format_strs=['stdout', 'log', 'csv'])
 
