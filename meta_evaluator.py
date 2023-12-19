@@ -1,3 +1,6 @@
+import json
+import argparse
+import os
 import tensorflow as tf
 import numpy as np
 import time
@@ -11,8 +14,7 @@ class Trainer():
                 policy,
                 n_itr,
                 batch_size=500,
-                start_itr=0,
-                num_inner_grad_steps=3):
+                start_itr=0):
         self.algo = algo
         self.env = env
         self.sampler = sampler
@@ -20,7 +22,6 @@ class Trainer():
         self.policy = policy
         self.n_itr = n_itr
         self.start_itr = start_itr
-        self.num_inner_grad_steps = num_inner_grad_steps
         self.batch_size = batch_size
 
     def train(self):
@@ -83,18 +84,32 @@ if __name__ == "__main__":
     from meta_algos.ppo_offloading import PPO
     from utils import utils, logger
 
-    logger.configure(dir="./meta_evaluate_ppo_log/task_offloading", format_strs=['stdout', 'log', 'csv'])
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-c', '--config', default='./val_config.json', type=str, 
+                        help='configuration file path')
+    args = parser.parse_args()
 
-    resource_cluster = Resources(mec_process_capable=(10.0 * 1024 * 1024),
-                                 mobile_process_capable=(1.0 * 1024 * 1024),
-                                 bandwidth_up=7.0, bandwidth_dl=7.0)
+    with open(args.config) as f:
+        data = json.load(f)
+
+    class Config:
+        def __init__(self, dictionary):
+            for key, value in dictionary.items():
+                setattr(self, key, value)
+    
+    c = Config(data)
+    save_path = f'{c.save_path}/h_{c.encoder_units}_isAtt_{c.is_attention}_olr_{c.outer_lr}_ilr_{c.inner_lr}_mbs_{c.meta_batch_size}_as_{c.adaptation_steps}_ib_{c.inner_batch_size}_ml_{c.max_path_length}_dp_{c.dropout}_nl_{c.num_layers}_nrl_{c.num_residual_layers}_isb_{c.is_bidencoder}_mec_{c.mec_process_capable}_mob_{c.mobile_process_capable}_bwu_{c.bandwidth_up}_bwd_{c.bandwidth_down}_ut_{c.unit_type}_sp_{c.start_iter}'
+    logger.configure(dir=save_path+"/val_logs/", format_strs=['stdout', 'log', 'csv'])
+
+    resource_cluster = Resources(mec_process_capable=(c.mec_process_capable * 1024 * 1024),
+                                 mobile_process_capable=(c.mobile_process_capable * 1024 * 1024),
+                                 bandwidth_up=c.bandwidth_up, 
+                                 bandwidth_dl=c.bandwidth_down)
 
     env = OffloadingEnvironment(resource_cluster=resource_cluster,
-                                batch_size=100,
-                                graph_number=100,
-                                graph_file_paths=[
-                                    "./env/mec_offloaing_envs/data/meta_offloading_20/offload_random20_12/random.20."
-                                    ],
+                                batch_size=c.graph_number,
+                                graph_number=c.graph_number,
+                                graph_file_paths=c.graph_file_paths,
                                 time_major=False)
 
     print("calculate baseline solution======")
@@ -120,33 +135,49 @@ if __name__ == "__main__":
     finish_time = env.get_all_locally_execute_time()
     print("avg all local solution: ", np.mean(finish_time))
 
-    policy = Seq2SeqPolicy(obs_dim=14,
-                           encoder_units=256,
-                           decoder_units=256,
-                           vocab_size=2,
-                           name="core_policy")
+    hparams = tf.contrib.training.HParams(
+            unit_type=c.unit_type,
+            encoder_units=c.encoder_units,
+            decoder_units=c.decoder_units,
+            n_features=c.action_dim,
+            time_major=c.time_major,
+            is_attention=c.is_attention,
+            forget_bias=c.forget_bias,
+            dropout=c.dropout,
+            num_gpus=1,
+            num_layers=c.num_layers,
+            num_residual_layers=c.num_residual_layers,
+            start_token=c.start_token,
+            end_token=c.end_token,
+            is_bidencoder=c.is_bidencoder
+        )
+    
+    policy = Seq2SeqPolicy(obs_dim=c.obs_dim,
+                           vocab_size=c.action_dim,
+                           name="core_policy",
+                           hparams=hparams)
 
     sampler = Seq2SeqSampler(env,
                              policy,
                              rollouts_per_meta_task=1,
-                             max_path_length=40000,
+                             max_path_length=c.max_path_length,
                              envs_per_task=None,
                              parallel=False)
 
     baseline = ValueFunctionBaseline()
 
     sample_processor = Seq2SeSamplerProcessor(baseline=baseline,
-                                              discount=0.99,
-                                              gae_lambda=0.95,
-                                              normalize_adv=True,
-                                              positive_adv=False)
+                                              discount=c.gamma,
+                                              gae_lambda=c.tau,
+                                              normalize_adv=c.normalize_adv,
+                                              positive_adv=c.positive_adv)
     algo = PPO(policy=policy,
                meta_sampler=sampler,
                meta_sampler_process=sample_processor,
-               lr=5e-4,
-               num_inner_grad_steps=3,
-               clip_value=0.2,
-               max_grad_norm=None)
+               lr=c.inner_lr,
+               num_inner_grad_steps=c.adaptation_steps,
+               clip_value=c.clip_eps,
+               max_grad_norm=c.max_grad_norm)
 
     # define the trainer of ppo to evaluate the performance of the trained meta policy for new tasks.
     trainer = Trainer(algo=algo,
@@ -154,14 +185,14 @@ if __name__ == "__main__":
                       sampler=sampler,
                       sample_processor=sample_processor,
                       policy=policy,
-                      n_itr=21,
-                      start_itr=0,
-                      batch_size=1000,
-                      num_inner_grad_steps=3)
+                      n_itr=c.num_iterations,
+                      start_itr=c.start_iter,
+                      batch_size=c.inner_batch_size)
 
     with tf.Session() as sess:
         sess.run(tf.compat.v1.global_variables_initializer())
-        policy.load_variables(load_path="./meta_model_300.ckpt")
+        if c.load:
+            policy.load_variables(load_path=c.load_path)
         avg_ret, avg_pg_loss, avg_vf_loss, avg_latencies = trainer.train()
 
 

@@ -359,8 +359,7 @@ class Seq2SeqNetwork():
 
 
 class Seq2SeqPolicy():
-    def __init__(self, obs_dim, encoder_units,
-                 decoder_units, vocab_size, name="pi"):
+    def __init__(self, obs_dim, vocab_size, hparams, name="pi"):
         self.decoder_targets = tf.compat.v1.placeholder(shape=[None, None], dtype=tf.int32, name="decoder_targets_ph_"+name)
         self.decoder_inputs = tf.compat.v1.placeholder(shape=[None, None], dtype=tf.int32, name="decoder_inputs_ph"+name)
         self.obs = tf.compat.v1.placeholder(shape=[None, None, obs_dim], dtype=tf.float32, name="obs_ph"+name)
@@ -368,24 +367,6 @@ class Seq2SeqPolicy():
 
         self.action_dim = vocab_size
         self.name = name
-
-        hparams = tf.contrib.training.HParams(
-            unit_type="lstm",
-            encoder_units=encoder_units,
-            decoder_units=decoder_units,
-
-            n_features=vocab_size,
-            time_major=False,
-            is_attention=True,
-            forget_bias=1.0,
-            dropout=0,
-            num_gpus=1,
-            num_layers=2,
-            num_residual_layers=0,
-            start_token=0,
-            end_token=2,
-            is_bidencoder=False
-        )
 
         self.network = Seq2SeqNetwork( hparams = hparams, reuse=tf.compat.v1.AUTO_REUSE,
                  encoder_inputs=self.obs,
@@ -451,14 +432,13 @@ class Seq2SeqPolicy():
 
 
 class MetaSeq2SeqPolicy():
-    def __init__(self, meta_batch_size, obs_dim, encoder_units, decoder_units,
-                 vocab_size):
+    def __init__(self, meta_batch_size, obs_dim, vocab_size, hparams):
 
         self.meta_batch_size = meta_batch_size
         self.obs_dim = obs_dim
         self.action_dim = vocab_size
 
-        self.core_policy = Seq2SeqPolicy(obs_dim, encoder_units, decoder_units, vocab_size, name='core_policy')
+        self.core_policy = Seq2SeqPolicy(obs_dim, vocab_size, hparams, name='core_policy')
 
 
         self.meta_policies = []
@@ -466,8 +446,7 @@ class MetaSeq2SeqPolicy():
         self.assign_old_eq_new_tasks = []
 
         for i in range(meta_batch_size):
-            self.meta_policies.append(Seq2SeqPolicy(obs_dim, encoder_units, decoder_units,
-                                                    vocab_size, name="task_"+str(i)+"_policy"))
+            self.meta_policies.append(Seq2SeqPolicy(obs_dim, vocab_size, hparams, name="task_"+str(i)+"_policy"))
 
             self.assign_old_eq_new_tasks.append(
                 U.function([], [], updates=[tf.compat.v1.assign(oldv, newv)

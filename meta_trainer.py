@@ -1,3 +1,6 @@
+import json
+import argparse
+import os
 import tensorflow as tf
 import numpy as np
 import time
@@ -11,6 +14,7 @@ class Trainer(object):
                 policy,
                 n_itr,
                 greedy_finish_time,
+                save_path,
                 start_itr=0,
                 inner_batch_size = 500,
                 save_interval = 100):
@@ -24,6 +28,7 @@ class Trainer(object):
         self.inner_batch_size = inner_batch_size
         self.greedy_finish_time = greedy_finish_time
         self.save_interval = save_interval
+        self.save_path = save_path
 
     def train(self):
         """
@@ -42,8 +47,6 @@ class Trainer(object):
             task_ids = self.sampler.update_tasks()
             paths = self.sampler.obtain_samples(log=False, log_prefix='')
 
-            #print("sampled path length is: ", len(paths[0]))
-
             greedy_run_time = [self.greedy_finish_time[x] for x in task_ids]
             logger.logkv('Average greedy latency,', np.mean(greedy_run_time))
 
@@ -54,7 +57,6 @@ class Trainer(object):
             """ ------------------- Inner Policy Update --------------------"""
             policy_losses, value_losses = self.algo.UpdatePPOTarget(samples_data, batch_size=self.inner_batch_size )
 
-            #print("task losses: ", losses)
             print("average task losses: ", np.mean(policy_losses))
             avg_loss.append(np.mean(policy_losses))
 
@@ -93,9 +95,9 @@ class Trainer(object):
             avg_ret.append(avg_reward)
 
             if itr % self.save_interval == 0:
-                self.policy.core_policy.save_variables(save_path="./meta_model_inner_step1/meta_model_"+str(itr)+".ckpt")
+                self.policy.core_policy.save_variables(save_path=self.save_path+"/meta_model_"+str(itr)+".ckpt")
 
-        self.policy.core_policy.save_variables(save_path="./meta_model_inner_step1/meta_model_final.ckpt")
+        self.policy.core_policy.save_variables(save_path=self.save_path+"/meta_model_final.ckpt")
 
         return avg_ret, avg_loss, avg_latencies
 
@@ -109,42 +111,35 @@ if __name__ == "__main__":
     from baselines.vf_baseline import ValueFunctionBaseline
     from meta_algos.MRLCO import MRLCO
 
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-c', '--config', default='./train_config.json', type=str, 
+                        help='configuration file path')
+    args = parser.parse_args()
+
+    with open(args.config) as f:
+        data = json.load(f)
+
+    class Config:
+        def __init__(self, dictionary):
+            for key, value in dictionary.items():
+                setattr(self, key, value)
+    
+    c = Config(data)
+    save_path = f'{c.save_path}/h_{c.encoder_units}_isAtt_{c.is_attention}_olr_{c.outer_lr}_ilr_{c.inner_lr}_mbs_{c.meta_batch_size}_as_{c.adaptation_steps}_ib_{c.inner_batch_size}_ml_{c.max_path_length}_dp_{c.dropout}_nl_{c.num_layers}_nrl_{c.num_residual_layers}_isb_{c.is_bidencoder}_mec_{c.mec_process_capable}_mob_{c.mobile_process_capable}_bwu_{c.bandwidth_up}_bwd_{c.bandwidth_down}_ut_{c.unit_type}_sp_{c.start_iter}'
     tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
-    logger.configure(dir="./meta_offloading20_log-inner_step1/", format_strs=['stdout', 'log', 'csv'])
+    logger.configure(dir=save_path+"/train_logs/", format_strs=['stdout', 'log', 'csv'])
 
-    META_BATCH_SIZE = 10
+    META_BATCH_SIZE = c.meta_batch_size
 
-    resource_cluster = Resources(mec_process_capable=(10.0 * 1024 * 1024),
-                                 mobile_process_capable=(1.0 * 1024 * 1024),
-                                 bandwidth_up=7.0, bandwidth_dl=7.0)
+    resource_cluster = Resources(mec_process_capable=(c.mec_process_capable * 1024 * 1024),
+                                 mobile_process_capable=(c.mobile_process_capable * 1024 * 1024),
+                                 bandwidth_up=c.bandwidth_up, 
+                                 bandwidth_dl=c.bandwidth_down)
 
     env = OffloadingEnvironment(resource_cluster=resource_cluster,
-                                batch_size=100,
-                                graph_number=100,
-                                graph_file_paths=[
-                                    "./env/mec_offloaing_envs/data/meta_offloading_20/offload_random20_1/random.20.",
-                                    "./env/mec_offloaing_envs/data/meta_offloading_20/offload_random20_2/random.20.",
-                                    "./env/mec_offloaing_envs/data/meta_offloading_20/offload_random20_3/random.20.",
-                                    "./env/mec_offloaing_envs/data/meta_offloading_20/offload_random20_5/random.20.",
-                                    "./env/mec_offloaing_envs/data/meta_offloading_20/offload_random20_6/random.20.",
-                                    "./env/mec_offloaing_envs/data/meta_offloading_20/offload_random20_7/random.20.",
-                                    "./env/mec_offloaing_envs/data/meta_offloading_20/offload_random20_8/random.20.",
-                                    "./env/mec_offloaing_envs/data/meta_offloading_20/offload_random20_9/random.20.",
-                                    "./env/mec_offloaing_envs/data/meta_offloading_20/offload_random20_10/random.20.",
-                                    "./env/mec_offloaing_envs/data/meta_offloading_20/offload_random20_11/random.20.",
-                                    "./env/mec_offloaing_envs/data/meta_offloading_20/offload_random20_13/random.20.",
-                                    "./env/mec_offloaing_envs/data/meta_offloading_20/offload_random20_14/random.20.",
-                                    "./env/mec_offloaing_envs/data/meta_offloading_20/offload_random20_15/random.20.",
-                                    "./env/mec_offloaing_envs/data/meta_offloading_20/offload_random20_16/random.20.",
-                                    "./env/mec_offloaing_envs/data/meta_offloading_20/offload_random20_17/random.20.",
-                                    "./env/mec_offloaing_envs/data/meta_offloading_20/offload_random20_18/random.20.",
-                                    "./env/mec_offloaing_envs/data/meta_offloading_20/offload_random20_19/random.20.",
-                                    "./env/mec_offloaing_envs/data/meta_offloading_20/offload_random20_20/random.20.",
-                                    "./env/mec_offloaing_envs/data/meta_offloading_20/offload_random20_21/random.20.",
-                                    "./env/mec_offloaing_envs/data/meta_offloading_20/offload_random20_22/random.20.",
-                                    "./env/mec_offloaing_envs/data/meta_offloading_20/offload_random20_23/random.20.",
-                                    "./env/mec_offloaing_envs/data/meta_offloading_20/offload_random20_25/random.20.",
-                                ],
+                                batch_size=c.graph_number,
+                                graph_number=c.graph_number,
+                                graph_file_paths=c.graph_file_paths,
                                 time_major=False)
 
     action, greedy_finish_time = env.greedy_solution()
@@ -159,45 +154,68 @@ if __name__ == "__main__":
 
     baseline = ValueFunctionBaseline()
 
-    meta_policy = MetaSeq2SeqPolicy(meta_batch_size=META_BATCH_SIZE, obs_dim=14, encoder_units=256, decoder_units=256,
-                                    vocab_size=2)
+    hparams = tf.contrib.training.HParams(
+            unit_type=c.unit_type,
+            encoder_units=c.encoder_units,
+            decoder_units=c.decoder_units,
+            n_features=c.action_dim,
+            time_major=c.time_major,
+            is_attention=c.is_attention,
+            forget_bias=c.forget_bias,
+            dropout=c.dropout,
+            num_gpus=1,
+            num_layers=c.num_layers,
+            num_residual_layers=c.num_residual_layers,
+            start_token=c.start_token,
+            end_token=c.end_token,
+            is_bidencoder=c.is_bidencoder
+        )
+
+    meta_policy = MetaSeq2SeqPolicy(meta_batch_size=META_BATCH_SIZE, 
+                                    obs_dim=c.obs_dim,
+                                    vocab_size=c.action_dim,
+                                    hparams=hparams)
 
     sampler = Seq2SeqMetaSampler(
         env=env,
         policy=meta_policy,
         rollouts_per_meta_task=1,  # This batch_size is confusing
         meta_batch_size=META_BATCH_SIZE,
-        max_path_length=40000,
+        max_path_length=c.max_path_length,
         parallel=False,
     )
 
     sample_processor = Seq2SeqMetaSamplerProcessor(baseline=baseline,
-                                                   discount=0.99,
-                                                   gae_lambda=0.95,
-                                                   normalize_adv=True,
-                                                   positive_adv=False)
+                                                   discount=c.gamma,
+                                                   gae_lambda=c.tau,
+                                                   normalize_adv=c.normalize_adv,
+                                                   positive_adv=c.positive_adv)
     algo = MRLCO(policy=meta_policy,
-                         meta_sampler=sampler,
-                         meta_sampler_process=sample_processor,
-                         inner_lr=5e-4,
-                         outer_lr=5e-4,
-                         meta_batch_size=META_BATCH_SIZE,
-                         num_inner_grad_steps=3,
-                         clip_value = 0.2)
+                 meta_sampler=sampler,
+                 meta_sampler_process=sample_processor,
+                 inner_lr=c.inner_lr,
+                 outer_lr=c.outer_lr,
+                 meta_batch_size=META_BATCH_SIZE,
+                 num_inner_grad_steps=c.adaptation_steps,
+                 clip_value = c.clip_eps,
+                 max_grad_norm=c.max_grad_norm)
 
-    trainer = Trainer(algo = algo,
-                        env=env,
-                        sampler=sampler,
-                        sample_processor=sample_processor,
-                        policy=meta_policy,
-                        n_itr=2000,
-                        greedy_finish_time= greedy_finish_time,
-                        start_itr=0,
-                        inner_batch_size=1000)
+    trainer = Trainer(algo=algo,
+                      env=env,
+                      sampler=sampler,
+                      sample_processor=sample_processor,
+                      policy=meta_policy,
+                      n_itr=c.num_iterations,
+                      greedy_finish_time= greedy_finish_time,
+                      start_itr=c.start_iter,
+                      inner_batch_size=c.inner_batch_size,
+                      save_interval=c.save_every,
+                      save_path=save_path)
 
     with tf.compat.v1.Session() as sess:
         sess.run(tf.global_variables_initializer())
-        #meta_policy.core_policy.load_variables('./meta_model_300.ckpt')
+        if c.load:
+            meta_policy.core_policy.load_variables(c.load_path)
         avg_ret, avg_loss, avg_latencies = trainer.train()
 
 
