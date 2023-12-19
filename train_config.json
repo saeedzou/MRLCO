@@ -38,6 +38,7 @@
 "save_every":50,
 "load":false,
 "load_path":"./models/policy_0.pt",
+"iter":0,
 "graph_number":100,
 "graph_file_paths":["./env/mec_offloaing_envs/data/meta_offloading_20/offload_random20_1/random.20.",
 "./env/mec_offloaing_envs/data/meta_offloading_20/offload_random20_2/random.20.",
