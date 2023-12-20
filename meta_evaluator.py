@@ -67,8 +67,8 @@ class Trainer():
 
 
             logger.logkv('Itr', itr)
-            logger.logkv('Average reward, ', avg_reward)
-            logger.logkv('Average latency,', avg_latency)
+            logger.logkv('Average reward', avg_reward)
+            logger.logkv('Average latency', avg_latency)
             logger.dumpkvs()
             avg_ret.append(avg_reward)
 

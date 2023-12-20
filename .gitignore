@@ -5,3 +5,4 @@
 process_csvs.py
 test.ipynb
 group_evaluator.py
+*plot.ipynb

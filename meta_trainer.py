@@ -48,7 +48,7 @@ class Trainer(object):
             paths = self.sampler.obtain_samples(log=False, log_prefix='')
 
             greedy_run_time = [self.greedy_finish_time[x] for x in task_ids]
-            logger.logkv('Average greedy latency,', np.mean(greedy_run_time))
+            logger.logkv('Average greedy latency', np.mean(greedy_run_time))
 
             """ ----------------- Processing Samples ---------------------"""
             logger.log("Processing samples...")
@@ -88,8 +88,8 @@ class Trainer(object):
 
 
             logger.logkv('Itr', itr)
-            logger.logkv('Average reward, ', avg_reward)
-            logger.logkv('Average latency,', avg_latency)
+            logger.logkv('Average reward', avg_reward)
+            logger.logkv('Average latency', avg_latency)
 
             logger.dumpkvs()
             avg_ret.append(avg_reward)
