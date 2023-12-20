@@ -2,3 +2,6 @@
 *.ckpt
 *.csv
 *.txt
+process_csvs.py
+test.ipynb
+group_evaluator.py
