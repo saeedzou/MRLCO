@@ -156,8 +156,8 @@ class OffloadingTaskGraph(object):
         for i in range(0, len(self.task_list)):
             self.dependency[i][i] = task_list[i].processing_data_size
 
-    def norm_feature(self, data_size):
-        return float(data_size - self.min_data_size) / float(self.max_data_size - self.min_data_size)
+    def norm_feature(self, data_size, max_size, min_size):
+        return float(data_size - min_size) / float(max_size - min_size)
 
     def add_dependency(self, pre_task_index, succ_task_index, transmission_cost):
         self.dependency[pre_task_index][succ_task_index] = transmission_cost
@@ -178,8 +178,8 @@ class OffloadingTaskGraph(object):
     def encode_point_sequence(self):
         point_sequence = []
         for i in range(self.task_number):
-            norm_processing_data_size = self.norm_feature(self.task_list[i].processing_data_size)
-            norm_transmission_data_size = self.norm_feature(self.task_list[i].transmission_data_size)
+            norm_processing_data_size = self.norm_feature(self.task_list[i].processing_data_size, self.max_data_size, self.min_data_size)
+            norm_transmission_data_size = self.norm_feature(self.task_list[i].transmission_data_size, self.max_data_size, self.min_data_size)
             norm_data_size_list = [norm_processing_data_size, norm_transmission_data_size]
             # heft_score = [self.task_list[i].heft_score]
 
@@ -188,14 +188,14 @@ class OffloadingTaskGraph(object):
 
             for pre_task_index in range(0, i):
                 if self.dependency[pre_task_index][i] > 0.1:
-                    pre_task_index_set.append(pre_task_index)
+                    pre_task_index_set.append(pre_task_index/self.task_number)
 
             while (len(pre_task_index_set) < 6):
                 pre_task_index_set.append(-1.0)
 
             for succs_task_index in range(i + 1, self.task_number):
                 if self.dependency[i][succs_task_index] > 0.1:
-                    succs_task_index_set.append(succs_task_index)
+                    succs_task_index_set.append(succs_task_index/self.task_number)
 
             while (len(succs_task_index_set) < 6):
                 succs_task_index_set.append(-1.0)
@@ -221,27 +221,48 @@ class OffloadingTaskGraph(object):
         point_sequence = []
         for i in range(self.task_number):
             task = self.task_list[i]
+            max_running_time = max(resource_cluster.locally_execution_cost(self.max_data_size),
+                                   resource_cluster.up_transmission_cost(self.max_data_size),
+                                   resource_cluster.dl_transmission_cost(self.max_data_size),
+                                   resource_cluster.mec_execution_cost(self.max_data_size))
+            min_running_time = min(resource_cluster.locally_execution_cost(self.min_data_size),
+                                   resource_cluster.up_transmission_cost(self.min_data_size),
+                                   resource_cluster.dl_transmission_cost(self.min_data_size),
+                                   resource_cluster.mec_execution_cost(self.min_data_size))
             local_process_cost = task.processing_data_size / resource_cluster.mobile_process_capable
+            local_process_cost = self.norm_feature(local_process_cost, max_running_time, min_running_time)
             up_link_cost = resource_cluster.up_transmission_cost(task.processing_data_size)
+            up_link_cost = self.norm_feature(up_link_cost, max_running_time, min_running_time)
             mec_process_cost = task.processing_data_size / resource_cluster.mec_process_capble
+            mec_process_cost = self.norm_feature(mec_process_cost, max_running_time, min_running_time)
             down_link_cost = resource_cluster.dl_transmission_cost(task.transmission_data_size)
+            down_link_cost = self.norm_feature(down_link_cost, max_running_time, min_running_time)
 
-            task_embeding_vector = [i, local_process_cost, up_link_cost,
-                                    mec_process_cost, down_link_cost]
+            norm_processing_data_size = self.norm_feature(task.processing_data_size, self.max_data_size, self.min_data_size)
+            norm_transmission_data_size = self.norm_feature(task.transmission_data_size, self.max_data_size, self.min_data_size)
+
+
+            task_embeding_vector = [i / self.task_number,
+                                    norm_processing_data_size,
+                                    norm_transmission_data_size,
+                                    local_process_cost,
+                                    up_link_cost,
+                                    mec_process_cost,
+                                    down_link_cost]
 
             pre_task_index_set = []
             succs_task_index_set = []
 
             for pre_task_index in range(0, i):
                 if self.dependency[pre_task_index][i] > 0.1:
-                    pre_task_index_set.append(pre_task_index)
+                    pre_task_index_set.append(pre_task_index/self.task_number)
 
             while (len(pre_task_index_set) < 6):
                 pre_task_index_set.append(-1.0)
 
             for succs_task_index in range(i + 1, self.task_number):
                 if self.dependency[i][succs_task_index] > 0.1:
-                    succs_task_index_set.append(succs_task_index)
+                    succs_task_index_set.append(succs_task_index/self.task_number)
 
             while (len(succs_task_index_set) < 6):
                 succs_task_index_set.append(-1.0)
