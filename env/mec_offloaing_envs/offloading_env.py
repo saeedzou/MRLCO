@@ -1,7 +1,6 @@
 from env.base import MetaEnv
 from env.mec_offloaing_envs.offloading_task_graph import OffloadingTaskGraph
 
-from samplers.vectorized_env_executor import MetaIterativeEnvExecutor
 import numpy as np
 import os
 from tqdm import tqdm
@@ -55,14 +54,19 @@ class Resources(object):
 
         return computation_time
 
+
 class OffloadingEnvironment(MetaEnv):
-    def __init__(self, resource_cluster, batch_size,
+    def __init__(self, 
+                 resource_cluster, 
+                 batch_size,
                  graph_number,
-                 graph_file_paths, time_major, encoding='rank'):
+                 graph_file_paths, 
+                 time_major, 
+                 encoding='rank'):
         self.resource_cluster = resource_cluster
         self.task_graphs_batchs = []
         self.encoder_batchs = []
-        self.encoder_lengths = []
+        self.encoder_adjs = []
         self.decoder_full_lengths = []
         self.max_running_time_batchs = []
         self.min_running_time_batchs = []
@@ -71,11 +75,11 @@ class OffloadingEnvironment(MetaEnv):
 
         # load all the task graphs into the evnironment
         for graph_file_path in graph_file_paths:
-            encoder_batchs, encoder_lengths, task_graph_batchs, decoder_full_lengths, max_running_time_batchs, min_running_time_batchs = \
+            encoder_batchs, encoder_adjs, task_graph_batchs, decoder_full_lengths, max_running_time_batchs, min_running_time_batchs = \
                 self.generate_point_batch_for_random_graphs(batch_size, graph_number, graph_file_path, time_major, encoding=encoding)
 
             self.encoder_batchs += encoder_batchs
-            self.encoder_lengths += encoder_lengths
+            self.encoder_adjs += encoder_adjs
             self.task_graphs_batchs += task_graph_batchs
             self.decoder_full_lengths += decoder_full_lengths
             self.max_running_time_batchs += max_running_time_batchs
@@ -109,7 +113,7 @@ class OffloadingEnvironment(MetaEnv):
 
     def merge_graphs(self):
         encoder_batchs = []
-        encoder_lengths = []
+        encoder_adjs = []
         task_graphs_batchs = []
         decoder_full_lengths =[]
         max_running_time_batchs = []
@@ -117,18 +121,18 @@ class OffloadingEnvironment(MetaEnv):
 
         for encoder_batch, encoder_length, task_graphs_batch, \
             decoder_full_length, max_running_time_batch, \
-            min_running_time_batch in zip(self.encoder_batchs, self.encoder_lengths,
+            min_running_time_batch in zip(self.encoder_batchs, self.encoder_adjs,
                                           self.task_graphs_batchs, self.decoder_full_lengths,
                                           self.max_running_time_batchs, self.min_running_time_batchs):
             encoder_batchs += encoder_batch.tolist()
-            encoder_lengths += encoder_length.tolist()
+            encoder_adjs += encoder_length.tolist()
             task_graphs_batchs += task_graphs_batch
             decoder_full_lengths += decoder_full_length.tolist()
             max_running_time_batchs += max_running_time_batch
             min_running_time_batchs += min_running_time_batch
 
         self.encoder_batchs = np.array([encoder_batchs])
-        self.encoder_lengths = np.array([encoder_lengths])
+        self.encoder_adjs = np.array([encoder_adjs])
         self.task_graphs_batchs = [task_graphs_batchs]
         self.decoder_full_lengths = np.array([decoder_full_lengths])
         self.max_running_time_batchs = np.array([max_running_time_batchs])
@@ -187,7 +191,7 @@ class OffloadingEnvironment(MetaEnv):
                                                   min_running_time_batch)
 
         done = True
-        observation = np.array(self.encoder_batchs[self.task_id])
+        observation = np.array(self.encoder_batchs[self.task_id]), np.array(self.encoder_adjs[self.task_id])
         info = task_finish_time
 
         return observation, reward_batch, done, info
@@ -201,17 +205,19 @@ class OffloadingEnvironment(MetaEnv):
         # reset the resource environment.
         self.resource_cluster.reset()
 
-        return np.array(self.encoder_batchs[self.task_id])
+        return np.array(self.encoder_batchs[self.task_id]), np.array(self.encoder_adjs[self.task_id])
 
     def render(self, mode='human'):
         pass
 
     def generate_point_batch_for_random_graphs(self, batch_size, graph_number, graph_file_path, time_major, encoding='rank'):
         encoder_list = []
+        encoder_dependencies = []
         task_graph_list = []
 
         encoder_batchs = []
-        encoder_lengths = []
+        encoder_adjs = []
+        encoder_batchs_dependencies = []
         task_graph_batchs = []
         decoder_full_lengths = []
 
@@ -221,7 +227,7 @@ class OffloadingEnvironment(MetaEnv):
         max_running_time_batchs = []
         min_running_time_batchs = []
 
-        for i in tqdm(range(graph_number)):
+        for i in tqdm(range(graph_number), desc=f'Loading graph {graph_file_path.split("/")[-2]}'):
             task_graph = OffloadingTaskGraph(graph_file_path + str(i) + '.gv')
             task_graph_list.append(task_graph)
 
@@ -232,10 +238,27 @@ class OffloadingEnvironment(MetaEnv):
 
             # the scheduling sequence will also store in self.'prioritize_sequence'
             scheduling_sequence = task_graph.prioritize_tasks(self.resource_cluster)
+
             if encoding == 'rank':
                 task_encode = np.array(task_graph.encode_point_sequence_with_ranking(scheduling_sequence), dtype=np.float32)
             elif encoding == 'rank_cost':
-                task_encode = np.array(task_graph.encode_point_sequence_with_ranking_and_cost(scheduling_sequence, self.resource_cluster), dtype=np.float32)
+                task_encode = np.array(task_graph.encode_point_sequence_with_ranking_and_cost(scheduling_sequence, self.resource_cluster, normalize=False), dtype=np.float32)
+            elif encoding == 'rank_cost_norm':
+                task_encode = np.array(task_graph.encode_point_sequence_with_ranking_and_cost(scheduling_sequence, self.resource_cluster, normalize=True), dtype=np.float32)
+            else:
+                raise ValueError("Encoding method {} is not supported".format(encoding))
+            adjacency_matrix = task_graph.dependency
+            adjacency_matrix = adjacency_matrix.astype(np.float32)
+            permutation = np.eye(adjacency_matrix.shape[0], dtype=np.float32)[scheduling_sequence]
+            adjacency_matrix = permutation @ adjacency_matrix @ permutation.T
+            # normalize the adjacency matrix
+            degree_matrix = np.array(adjacency_matrix.sum(1))
+            degree_matrix = np.power(degree_matrix, -0.5).flatten()
+            degree_matrix[np.isinf(degree_matrix)] = 0.0
+            degree_matrix[np.isnan(degree_matrix)] = 0.0
+            degree_matrix = np.diag(degree_matrix)
+            adjacency_matrix = degree_matrix @ adjacency_matrix @ degree_matrix
+            encoder_dependencies.append(adjacency_matrix)
             encoder_list.append(task_encode)
 
         for i in range(int(graph_number / batch_size)):
@@ -243,23 +266,28 @@ class OffloadingEnvironment(MetaEnv):
             end_batch_index = (i + 1) * batch_size
 
             task_encode_batch = encoder_list[start_batch_index:end_batch_index]
+            task_dependencies_batch = encoder_dependencies[start_batch_index:end_batch_index]
             if time_major:
                 task_encode_batch = np.array(task_encode_batch).swapaxes(0, 1)
+                task_dependencies_batch = np.array(task_dependencies_batch).swapaxes(0, 1)
                 sequence_length = np.asarray([task_encode_batch.shape[0]] * task_encode_batch.shape[1])
             else:
                 task_encode_batch = np.array(task_encode_batch)
+                task_dependencies_batch = np.array(task_dependencies_batch)
                 sequence_length = np.asarray([task_encode_batch.shape[1]] * task_encode_batch.shape[0])
 
             decoder_full_lengths.append(sequence_length)
-            encoder_lengths.append(sequence_length)
+            encoder_adjs.append(sequence_length)
             encoder_batchs.append(task_encode_batch)
+            encoder_batchs_dependencies.append(task_dependencies_batch)
+            
 
             task_graph_batch = task_graph_list[start_batch_index:end_batch_index]
             task_graph_batchs.append(task_graph_batch)
             max_running_time_batchs.append(max_running_time_vector[start_batch_index:end_batch_index])
             min_running_time_batchs.append(min_running_time_vector[start_batch_index:end_batch_index])
 
-        return encoder_batchs, encoder_lengths, task_graph_batchs, \
+        return encoder_batchs, encoder_batchs_dependencies, task_graph_batchs, \
                decoder_full_lengths, max_running_time_batchs, \
                min_running_time_batchs
 
@@ -581,6 +609,3 @@ class OffloadingEnvironment(MetaEnv):
         result_plan, finish_time_batchs = self.greedy_solution()
 
         return result_plan[self.task_id], finish_time_batchs[self.task_id]
-
-
-
