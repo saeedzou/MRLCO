@@ -191,7 +191,7 @@ class OffloadingEnvironment(MetaEnv):
                                                   min_running_time_batch)
 
         done = True
-        observation = np.array(self.encoder_batchs[self.task_id]), np.array(self.encoder_adjs[self.task_id])
+        observation = np.array(self.encoder_batchs[self.task_id])
         info = task_finish_time
 
         return observation, reward_batch, done, info
@@ -205,7 +205,7 @@ class OffloadingEnvironment(MetaEnv):
         # reset the resource environment.
         self.resource_cluster.reset()
 
-        return np.array(self.encoder_batchs[self.task_id]), np.array(self.encoder_adjs[self.task_id])
+        return np.array(self.encoder_batchs[self.task_id])
 
     def render(self, mode='human'):
         pass
