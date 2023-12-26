@@ -145,7 +145,7 @@ class Seq2SeqNetwork():
                                                                         scope="encoder_embeddings",
                                                                         reuse=tf.compat.v1.AUTO_REUSE)
             if self.graph:
-                self.graph_embeddings = GCN(self.obs_dim, self.encoder_hidden_unit).call(self.encoder_inputs, self.encoder_inputs)
+                self.graph_embeddings = GCN(self.obs_dim, self.encoder_hidden_unit).call(self.encoder_inputs, self.encoder_adjs)
                 self.encoder_embeddings = self.encoder_embeddings + self.graph_embeddings
 
             self.decoder_embeddings = tf.nn.embedding_lookup(self.embeddings,
