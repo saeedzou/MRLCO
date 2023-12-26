@@ -378,7 +378,7 @@ class Seq2SeqPolicy():
 
         self._dist = CategoricalPd(vocab_size)
 
-    def get_actions(self, observations, adjs):
+    def get_actions(self, observations):
         sess = tf.compat.v1.get_default_session()
 
         decoder_full_length = np.array( [observations.shape[1]] * observations.shape[0] , dtype=np.int32)
