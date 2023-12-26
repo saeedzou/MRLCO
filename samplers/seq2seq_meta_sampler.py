@@ -111,8 +111,8 @@ class Seq2SeqMetaSampler(Sampler):
                 # append new samples to running paths
 
                 # handling
-                for single_ob, single_adj, single_ac, single_logit, single_reward, single_value, single_task_finish_time \
-                        in zip(observation, adj, action, logit, reward, value, task_finish_times):
+                for single_ob, single_ac, single_logit, single_reward, single_value, single_task_finish_time \
+                        in zip(observation, action, logit, reward, value, task_finish_times):
                     running_paths[idx]["observations"]= single_ob
                     running_paths[idx]["actions"] = single_ac
                     running_paths[idx]["logits"] = single_logit
