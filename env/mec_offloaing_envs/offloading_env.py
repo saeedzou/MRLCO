@@ -62,7 +62,8 @@ class OffloadingEnvironment(MetaEnv):
                  graph_number,
                  graph_file_paths, 
                  time_major, 
-                 encoding='rank'):
+                 encoding='rank',
+                 graph=False):
         self.resource_cluster = resource_cluster
         self.task_graphs_batchs = []
         self.encoder_batchs = []
@@ -72,6 +73,7 @@ class OffloadingEnvironment(MetaEnv):
         self.min_running_time_batchs = []
         self.graph_file_paths = graph_file_paths
         self.encoding = encoding
+        self.graph = graph
 
         # load all the task graphs into the evnironment
         for graph_file_path in graph_file_paths:
@@ -192,8 +194,11 @@ class OffloadingEnvironment(MetaEnv):
 
         done = True
         observation = np.array(self.encoder_batchs[self.task_id])
+        
         info = task_finish_time
-
+        if self.graph:
+            adj = np.array(self.encoder_adjs[self.task_id])
+            return observation, adj, reward_batch, done, info
         return observation, reward_batch, done, info
 
     def reset(self):
@@ -204,7 +209,8 @@ class OffloadingEnvironment(MetaEnv):
         """
         # reset the resource environment.
         self.resource_cluster.reset()
-
+        if self.graph:
+            return np.array(self.encoder_batchs[self.task_id]), np.array(self.encoder_adjs[self.task_id])
         return np.array(self.encoder_batchs[self.task_id])
 
     def render(self, mode='human'):
