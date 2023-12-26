@@ -38,6 +38,7 @@ class MRLCO():
         self.old_logits = []
         self.actions = []
         self.obs = []
+        self.adjs = []
         self.vpred = []
         self.decoder_full_length = []
 
