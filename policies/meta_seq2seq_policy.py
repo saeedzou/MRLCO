@@ -60,54 +60,17 @@ class FixedSequenceLearningSampleEmbedingHelper(tf.contrib.seq2seq.SampleEmbeddi
         return (finished, next_inputs, state)
 
 
-class GraphConvolution():
-    """Simple GCN layer, similar to https://arxiv.org/abs/1609.02907"""
-
-    def __init__(self, in_features, out_features, bias=True):
-        self.in_features = in_features
-        self.out_features = out_features
-        initializer=tf.glorot_normal_initializer()
-        self.weight = tf.Variable(initializer([in_features, out_features]), name='weight')
-        if bias:
-            self.bias = tf.Variable(tf.zeros([out_features]), name='bias')
-        else:
-            self.bias = None
-
-    def call(self, x, adj):
-        support = x @ self.weight
-        output = adj @ support
-        if self.bias is not None:
-            return output + self.bias
-        else:
-            return output
-
-class GCN():
-    def __init__(self, nfeat, nhid):
-        self.gc1 = GraphConvolution(nfeat, nhid)
-        self.gc2 = GraphConvolution(nhid, nhid)
-
-    def call(self, x, adj):
-        x = self.gc1.call(x, adj)
-        x = self.gc2.call(x, adj)
-        return x
-
 class Seq2SeqNetwork():
     def __init__(self, name,
                  hparams, reuse,
                  encoder_inputs,
                  decoder_inputs,
                  decoder_full_length,
-                 decoder_targets,
-                 encoder_adjs=None,
-                 obs_dim=19,
-                 graph=True):
+                 decoder_targets):
         self.encoder_hidden_unit = hparams.encoder_units
         self.decoder_hidden_unit = hparams.decoder_units
         self.is_bidencoder = hparams.is_bidencoder
         self.reuse = reuse
-        self.graph = graph
-        self.obs_dim = obs_dim
-        self.encoder_adjs = encoder_adjs
 
         self.n_features = hparams.n_features
         self.time_major = hparams.time_major
@@ -144,9 +107,6 @@ class Seq2SeqNetwork():
                                                                         activation_fn = None,
                                                                         scope="encoder_embeddings",
                                                                         reuse=tf.compat.v1.AUTO_REUSE)
-            if self.graph:
-                self.graph_embeddings = GCN(self.obs_dim, self.encoder_hidden_unit).call(self.encoder_inputs, self.encoder_adjs)
-                self.encoder_embeddings = self.encoder_embeddings + self.graph_embeddings
 
             self.decoder_embeddings = tf.nn.embedding_lookup(self.embeddings,
                                                              self.decoder_inputs)
@@ -399,11 +359,10 @@ class Seq2SeqNetwork():
 
 
 class Seq2SeqPolicy():
-    def __init__(self, obs_dim, vocab_size, hparams, name="pi", graph=True):
+    def __init__(self, obs_dim, vocab_size, hparams, name="pi"):
         self.decoder_targets = tf.compat.v1.placeholder(shape=[None, None], dtype=tf.int32, name="decoder_targets_ph_"+name)
         self.decoder_inputs = tf.compat.v1.placeholder(shape=[None, None], dtype=tf.int32, name="decoder_inputs_ph"+name)
         self.obs = tf.compat.v1.placeholder(shape=[None, None, obs_dim], dtype=tf.float32, name="obs_ph"+name)
-        self.adjs = tf.compat.v1.placeholder(shape=[None, None, None], dtype=tf.float32, name="adjs_ph"+name)
         self.decoder_full_length = tf.compat.v1.placeholder(shape=[None], dtype=tf.int32, name="decoder_full_length"+name)
 
         self.action_dim = vocab_size
@@ -411,9 +370,6 @@ class Seq2SeqPolicy():
 
         self.network = Seq2SeqNetwork( hparams = hparams, reuse=tf.compat.v1.AUTO_REUSE,
                  encoder_inputs=self.obs,
-                 encoder_adjs=self.adjs,
-                 graph=graph,
-                 obs_dim=obs_dim,
                  decoder_inputs=self.decoder_inputs,
                  decoder_full_length=self.decoder_full_length,
                  decoder_targets=self.decoder_targets,name = name)
@@ -430,7 +386,7 @@ class Seq2SeqPolicy():
         actions, logits, v_value = sess.run([self.network.sample_decoder_prediction,
                                              self.network.sample_decoder_logits,
                                              self.network.sample_vf],
-                                            feed_dict={self.obs: observations, self.decoder_full_length: decoder_full_length, self.adjs: adjs})
+                                            feed_dict={self.obs: observations, self.decoder_full_length: decoder_full_length})
 
         return actions, logits, v_value
 
@@ -476,13 +432,13 @@ class Seq2SeqPolicy():
 
 
 class MetaSeq2SeqPolicy():
-    def __init__(self, meta_batch_size, obs_dim, vocab_size, hparams, graph=False):
+    def __init__(self, meta_batch_size, obs_dim, vocab_size, hparams):
 
         self.meta_batch_size = meta_batch_size
         self.obs_dim = obs_dim
         self.action_dim = vocab_size
 
-        self.core_policy = Seq2SeqPolicy(obs_dim, vocab_size, hparams, name='core_policy', graph=graph)
+        self.core_policy = Seq2SeqPolicy(obs_dim, vocab_size, hparams, name='core_policy')
 
 
         self.meta_policies = []
@@ -490,7 +446,7 @@ class MetaSeq2SeqPolicy():
         self.assign_old_eq_new_tasks = []
 
         for i in range(meta_batch_size):
-            self.meta_policies.append(Seq2SeqPolicy(obs_dim, vocab_size, hparams, name="task_"+str(i)+"_policy", graph=graph))
+            self.meta_policies.append(Seq2SeqPolicy(obs_dim, vocab_size, hparams, name="task_"+str(i)+"_policy"))
 
             self.assign_old_eq_new_tasks.append(
                 U.function([], [], updates=[tf.compat.v1.assign(oldv, newv)
@@ -501,14 +457,14 @@ class MetaSeq2SeqPolicy():
         self._dist = CategoricalPd(vocab_size)
 
 
-    def get_actions(self, observations, adjs):
+    def get_actions(self, observations):
         assert len(observations) == self.meta_batch_size
 
         meta_actions = []
         meta_logits = []
         meta_v_values = []
-        for i, (obser_per_task, adjs_per_task) in enumerate(zip(observations, adjs)):
-            action, logits, v_value = self.meta_policies[i].get_actions(obser_per_task, adjs_per_task)
+        for i, obser_per_task in enumerate(observations):
+            action, logits, v_value = self.meta_policies[i].get_actions(obser_per_task)
 
             meta_actions.append(np.array(action))
             meta_logits.append(np.array(logits))
