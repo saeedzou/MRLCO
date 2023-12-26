@@ -507,7 +507,7 @@ class MetaSeq2SeqPolicy():
         meta_actions = []
         meta_logits = []
         meta_v_values = []
-        for i, (obser_per_task, adjs_per_task) in enumerate(observations, adjs):
+        for i, (obser_per_task, adjs_per_task) in enumerate(zip(observations, adjs)):
             action, logits, v_value = self.meta_policies[i].get_actions(obser_per_task, adjs_per_task)
 
             meta_actions.append(np.array(action))
