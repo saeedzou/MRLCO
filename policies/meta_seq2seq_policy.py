@@ -99,7 +99,7 @@ class Seq2SeqNetwork():
             self.embeddings = tf.Variable(tf.random.uniform(
                 [self.n_features,
                  self.encoder_hidden_unit],
-                -1.0, 1.0), dtype=tf.float32)
+                -1.0, 1.0), dtype=tf.float32, name='decoder_embeddings')
 
             # using a fully connected layer as embeddings
             self.encoder_embeddings = tf.contrib.layers.fully_connected(self.encoder_inputs,
